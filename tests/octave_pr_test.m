@@ -9,6 +9,13 @@ assert(all(isfinite(output(:))));
 assert(all(output(:) >= -2 & output(:) <= 2));
 assert(any(abs(output(:)) > 1e-6));
 
+reference_output = octave_pr_reference( ...
+    scenario.error_signal, scenario.fs, scenario.f0, ...
+    2 * pi * 2, 0.2, 1.0, -2, 2);
+max_reference_error = max(abs(output(:) - reference_output(:)));
+assert(all(isfinite(reference_output(:))));
+assert(max_reference_error < 1e-3);
+
 before_step = output( ...
     scenario.t >= 0.25 & scenario.t < 0.45);
 after_step = output( ...
@@ -22,4 +29,4 @@ saturated_output = pr_controller_mex( ...
     2 * pi * 2, 100, 0, -0.5, 0.5);
 assert(all(saturated_output <= 0.5 & saturated_output >= -0.5));
 
-disp("Octave PR load-step simulation passed.");
+disp("Octave PR load-step and precision tests passed.");
