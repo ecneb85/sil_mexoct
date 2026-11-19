@@ -11,21 +11,42 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Install Octave and development tools
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo apt-get update
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends octave octave-dev
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build cached Octave image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: octave-pr-ci:latest
+          load: true
+          cache-from: type=gha,scope=octave-pr-ci
+          cache-to: type=gha,mode=max,scope=octave-pr-ci
 
       - name: Build MEX module
-        run: mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            octave-pr-ci:latest \
+            mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
 
       - name: Run simulation checks
-        run: octave --no-gui --quiet tests/octave_pr_test.m
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            octave-pr-ci:latest \
+            octave --no-gui --quiet tests/octave_pr_test.m
 
       - name: Generate HTML simulation report
-        run: octave --no-gui --quiet octave_pr_report.m
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            octave-pr-ci:latest \
+            octave --no-gui --quiet octave_pr_report.m
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4
