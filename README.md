@@ -29,9 +29,9 @@ The GitHub Actions workflow builds a Docker image from `Dockerfile` and uses
 it to compile the MEX module and run a headless simulation check on every push
 and pull request. BuildKit caches the image layers between runs, avoiding
 reinstallation of Octave unless the image definition changes or the cache is
-unavailable. The check covers output shape, finite values, and saturation
-limits, and verifies that the controller response increases after the load
-step.
+unavailable. The checks cover output shape, finite values, saturation limits,
+response to the load step, and maximum sample error against a double-precision
+reference.
 
 Generate a standalone HTML report locally after building the MEX module:
 
@@ -41,12 +41,17 @@ octave --no-gui --quiet octave_pr_report.m
 
 The report is written to `artifacts/pr_simulation_report.html` and includes an
 inline SVG graph of the simulated load demand, input disturbance, and
-controller output. The shared Octave scenario models an illustrative 115 V RMS,
-400 Hz aircraft AC bus with a load step from 0.3 to 0.7 p.u. at 0.5 seconds.
-It is a teaching example, not a validated aircraft power-system model. GitHub
-Actions generates the same report and uploads it as the
-`pr-simulation-html-report` artifact, downloadable from the successful workflow
-run.
+controller output. Zoom with the mouse wheel or the zoom buttons, drag to pan,
+and use **Reset zoom** to restore the full view. The report includes peak and
+RMS output, saturation rate, gain and phase at resonance, and maximum and RMS
+difference from the double-precision reference. The reference uses the same
+discrete PR equation and output limits, but double-precision arithmetic.
+
+The shared Octave scenario models an illustrative 115 V RMS, 400 Hz aircraft
+AC bus with a load step from 0.3 to 0.7 p.u. at 0.5 seconds. It is a teaching
+example, not a validated aircraft power-system model. GitHub Actions generates
+the same report and uploads it as the `pr-simulation-html-report` artifact,
+downloadable from the successful workflow run.
 
 The function signature is:
 
