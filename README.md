@@ -41,11 +41,13 @@ octave --no-gui --quiet octave_pr_report.m
 
 The report is written to `artifacts/pr_simulation_report.html` and includes an
 inline SVG graph of the simulated load demand, input disturbance, and
-controller output. Zoom with the mouse wheel or the zoom buttons, drag to pan,
-and use **Reset zoom** to restore the full view. The report includes peak and
-RMS output, saturation rate, gain and phase at resonance, and maximum and RMS
-difference from the double-precision reference. The reference uses the same
-discrete PR equation and output limits, but double-precision arithmetic.
+controller output. Zoom the time axis with the mouse wheel or zoom buttons,
+drag to pan, use **Load step** for a close-up of the transient, and use
+**Reset zoom** to restore the full view. All simulation samples are plotted.
+The report includes peak and RMS output, saturation rate, gain and phase at
+resonance, and maximum and RMS difference from the double-precision reference.
+The reference uses the same discrete PR equation and output limits, but
+double-precision arithmetic.
 
 The shared Octave scenario models an illustrative 115 V RMS, 400 Hz aircraft
 AC bus with a load step from 0.3 to 0.7 p.u. at 0.5 seconds. It is a teaching
