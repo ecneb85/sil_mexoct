@@ -30,6 +30,13 @@ saturated_samples = sum(controller_output(:) <= ymin | ...
     controller_output(:) >= ymax);
 saturation_percent = 100 * saturated_samples / numel(controller_output);
 
+window_samples = max(1, round(scenario.fs / scenario.f0));
+rms_window = ones(window_samples, 1) / window_samples;
+input_rms_envelope = sqrt(conv( ...
+    scenario.error_signal(:) .^ 2, rms_window, "same"));
+output_rms_envelope = sqrt(conv( ...
+    controller_output(:) .^ 2, rms_window, "same"));
+
 before_step = scenario.t >= 0.25 & scenario.t < 0.45;
 after_step = scenario.t >= 0.65 & scenario.t < 0.85;
 before_step_rms = sqrt(mean(controller_output(before_step) .^ 2));
@@ -71,6 +78,10 @@ plot_width = 860;
 plot_height = 330;
 plot_ymin = -2;
 plot_ymax = 2;
+envelope_top = 35;
+envelope_height = 210;
+envelope_ymin = 0;
+envelope_ymax = 0.8;
 sample_indices = 1:numel(t);
 
 fprintf(report_file, "<!doctype html>\n");
@@ -84,7 +95,7 @@ fprintf(report_file, "h1{font-size:1.8rem} .card{background:white;border:1px sol
 fprintf(report_file, "svg{width:100%%;height:auto} table{border-collapse:collapse} th,td{text-align:left;padding:.45rem 1.5rem .45rem 0}\n");
 fprintf(report_file, ".load{stroke:#16a34a;stroke-dasharray:6 4}.input{stroke:#2563eb}.output{stroke:#e11d48}.legend{font-size:14px}\n");
 fprintf(report_file, ".chart-controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}.chart-controls button{padding:.45rem .8rem;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer}.chart-hint{color:#475569;font-size:.9rem}\n");
-fprintf(report_file, "#response-chart{touch-action:none;cursor:grab}#response-chart:active{cursor:grabbing}\n");
+fprintf(report_file, "#response-chart,#envelope-chart{touch-action:none;cursor:grab}#response-chart:active,#envelope-chart:active{cursor:grabbing}\n");
 fprintf(report_file, "</style>\n</head>\n<body>\n");
 fprintf(report_file, "<h1>PR filter simulation report</h1>\n");
 fprintf(report_file, ...
@@ -118,8 +129,111 @@ fprintf(report_file, '<button id="zoom-load-step" type="button">Load step</butto
 fprintf(report_file, '<button id="zoom-reset" type="button">Reset zoom</button>\n');
 fprintf(report_file, '<span class="chart-hint">Mouse wheel: zoom time axis; drag: pan.</span>\n');
 fprintf(report_file, '</div>\n');
-fprintf(report_file, '<svg id="response-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-labelledby="chart-title chart-desc">\n');
-fprintf(report_file, '<title id="chart-title">400 Hz load step and PR controller response</title>\n');
+fprintf(report_file, '<h3>Load-step response (one-cycle RMS)</h3>\n');
+fprintf(report_file, ...
+    '<p>One-cycle RMS smooths the 400 Hz waveforms to reveal the transient amplitude.</p>\n');
+fprintf(report_file, '<svg id="envelope-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" role="img" aria-label="Load-step response envelope">\n');
+fprintf(report_file, ...
+    '<defs><clipPath id="envelope-clip"><rect x="%g" y="%g" width="%g" height="%g"/></clipPath></defs>\n', ...
+    plot_left - 30, envelope_top - 20, plot_width + 60, envelope_height + 50);
+fprintf(report_file, '<g id="envelope-content" clip-path="url(#envelope-clip)">\n');
+
+for y_tick = envelope_ymin:0.2:envelope_ymax
+    y_position = envelope_top + ...
+        (envelope_ymax - y_tick) / (envelope_ymax - envelope_ymin) * ...
+        envelope_height;
+    fprintf(report_file, ...
+        '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#e2e8f0"/>\n', ...
+        plot_left, y_position, plot_left + plot_width, y_position);
+end
+
+for x_tick = 0:0.2:1
+    x_position = plot_left + x_tick * plot_width;
+    fprintf(report_file, ...
+        '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#e2e8f0"/>\n', ...
+        x_position, envelope_top, x_position, envelope_top + envelope_height);
+end
+
+fprintf(report_file, ...
+    '<polyline class="load" fill="none" stroke-width="2.5" points="');
+for sample_index = sample_indices
+    x_position = plot_left + t(sample_index) / t(end) * plot_width;
+    y_position = envelope_top + ...
+        (envelope_ymax - scenario.load_level_pu(sample_index)) / ...
+        (envelope_ymax - envelope_ymin) * envelope_height;
+    fprintf(report_file, "%.2f,%.2f ", x_position, y_position);
+end
+fprintf(report_file, '"/>\n');
+
+fprintf(report_file, ...
+    '<polyline class="input" fill="none" stroke-width="1.5" points="');
+for sample_index = sample_indices
+    x_position = plot_left + t(sample_index) / t(end) * plot_width;
+    y_position = envelope_top + ...
+        (envelope_ymax - input_rms_envelope(sample_index)) / ...
+        (envelope_ymax - envelope_ymin) * envelope_height;
+    fprintf(report_file, "%.2f,%.2f ", x_position, y_position);
+end
+fprintf(report_file, '"/>\n');
+
+fprintf(report_file, ...
+    '<polyline class="output" fill="none" stroke-width="1.5" points="');
+for sample_index = sample_indices
+    x_position = plot_left + t(sample_index) / t(end) * plot_width;
+    y_position = envelope_top + ...
+        (envelope_ymax - output_rms_envelope(sample_index)) / ...
+        (envelope_ymax - envelope_ymin) * envelope_height;
+    fprintf(report_file, "%.2f,%.2f ", x_position, y_position);
+end
+fprintf(report_file, '"/>\n');
+
+for x_tick = 0:0.2:1
+    x_position = plot_left + x_tick * plot_width;
+    fprintf(report_file, ...
+        '<text x="%g" y="%g" text-anchor="middle" font-size="12" fill="#475569">%.1f</text>\n', ...
+        x_position, envelope_top + envelope_height + 20, x_tick);
+end
+fprintf(report_file, "</g>\n");
+
+fprintf(report_file, ...
+    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
+    plot_left, envelope_top, plot_left, envelope_top + envelope_height);
+fprintf(report_file, ...
+    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
+    plot_left, envelope_top + envelope_height, ...
+    plot_left + plot_width, envelope_top + envelope_height);
+
+for y_tick = envelope_ymin:0.2:envelope_ymax
+    y_position = envelope_top + ...
+        (envelope_ymax - y_tick) / (envelope_ymax - envelope_ymin) * ...
+        envelope_height;
+    fprintf(report_file, ...
+        '<text x="%g" y="%g" text-anchor="end" font-size="12" fill="#475569">%.1f</text>\n', ...
+        plot_left - 10, y_position + 4, y_tick);
+end
+
+fprintf(report_file, ...
+    '<text x="%g" y="%g" text-anchor="middle" font-size="13" fill="#334155">Time (s)</text>\n', ...
+    plot_left + plot_width / 2, envelope_top + envelope_height + 45);
+fprintf(report_file, ...
+    '<text x="20" y="%g" text-anchor="middle" font-size="13" fill="#334155" transform="rotate(-90 20 %g)">RMS amplitude (p.u.)</text>\n', ...
+    envelope_top + envelope_height / 2, envelope_top + envelope_height / 2);
+fprintf(report_file, ...
+    '<line x1="185" y1="330" x2="215" y2="330" class="load" stroke-width="2"/>\n');
+fprintf(report_file, ...
+    '<text x="223" y="335" class="legend" fill="#334155">Load demand</text>\n');
+fprintf(report_file, ...
+    '<line x1="390" y1="330" x2="420" y2="330" class="input" stroke-width="2"/>\n');
+fprintf(report_file, ...
+    '<text x="428" y="335" class="legend" fill="#334155">Input RMS</text>\n');
+fprintf(report_file, ...
+    '<line x1="590" y1="330" x2="620" y2="330" class="output" stroke-width="2"/>\n');
+fprintf(report_file, ...
+    '<text x="628" y="335" class="legend" fill="#334155">PR output RMS</text>\n');
+fprintf(report_file, "</svg>\n");
+
+fprintf(report_file, '<h3>Instantaneous waveforms</h3>\n');
+fprintf(report_file, '<svg id="response-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-label="400 Hz load step and PR controller waveforms" aria-describedby="chart-desc">\n');
 fprintf(report_file, ...
     ['<desc id="chart-desc">Load demand steps from 0.3 to 0.7 per unit ' ...
      'at 0.5 seconds, with the input disturbance and controller output.</desc>\n']);
@@ -214,13 +328,13 @@ fprintf(report_file, "</svg></section>\n");
 
 fprintf(report_file, "<script>\n");
 fprintf(report_file, "(() => {\n");
-fprintf(report_file, "const svg = document.getElementById('response-chart');\n");
-fprintf(report_file, "const plot = document.getElementById('plot-content');\n");
+fprintf(report_file, "const charts = [document.getElementById('envelope-chart'), document.getElementById('response-chart')];\n");
+fprintf(report_file, "const plots = [document.getElementById('envelope-content'), document.getElementById('plot-content')];\n");
 fprintf(report_file, "let scale = 1, tx = 0, dragStart = null;\n");
 fprintf(report_file, "const limits = {left: %g, width: %g};\n", ...
     plot_left, plot_width);
-fprintf(report_file, "function point(event) { const p = svg.createSVGPoint(); p.x = event.clientX; p.y = event.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }\n");
-fprintf(report_file, "function applyTransform() { plot.setAttribute('transform', 'translate(' + tx + ' 0) scale(' + scale + ' 1)'); }\n");
+fprintf(report_file, "function point(event, chart) { const p = chart.createSVGPoint(); p.x = event.clientX; p.y = event.clientY; return p.matrixTransform(chart.getScreenCTM().inverse()); }\n");
+fprintf(report_file, "function applyTransform() { for (const plot of plots) plot.setAttribute('transform', 'translate(' + tx + ' 0) scale(' + scale + ' 1)'); }\n");
 fprintf(report_file, "function clampPan() { const minX = limits.left + limits.width - scale * (limits.left + limits.width); const maxX = limits.left - scale * limits.left; tx = Math.min(maxX, Math.max(minX, tx)); }\n");
 fprintf(report_file, "function zoomAt(factor, x) { const next = Math.max(1, Math.min(256, scale * factor)); const ratio = next / scale; tx = x - (x - tx) * ratio; scale = next; clampPan(); applyTransform(); }\n");
 fprintf(report_file, "document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.5, 520));\n");
@@ -228,11 +342,13 @@ fprintf(report_file, "document.getElementById('zoom-out').addEventListener('clic
 fprintf(report_file, "document.getElementById('zoom-load-step').addEventListener('click', () => { scale = 5; tx = 500 - scale * (%g + 0.55 * %g); clampPan(); applyTransform(); });\n", ...
     plot_left, plot_width);
 fprintf(report_file, "document.getElementById('zoom-reset').addEventListener('click', () => { scale = 1; tx = 0; applyTransform(); });\n");
-fprintf(report_file, "svg.addEventListener('wheel', event => { event.preventDefault(); const p = point(event); zoomAt(event.deltaY < 0 ? 1.2 : 1 / 1.2, p.x); }, {passive: false});\n");
-fprintf(report_file, "svg.addEventListener('pointerdown', event => { if (event.button !== 0 || scale <= 1) return; const p = point(event); dragStart = {x: p.x, tx}; svg.setPointerCapture(event.pointerId); });\n");
-fprintf(report_file, "svg.addEventListener('pointermove', event => { if (!dragStart) return; const p = point(event); tx = dragStart.tx + p.x - dragStart.x; clampPan(); applyTransform(); });\n");
-fprintf(report_file, "svg.addEventListener('pointerup', () => { dragStart = null; });\n");
-fprintf(report_file, "svg.addEventListener('pointercancel', () => { dragStart = null; });\n");
+fprintf(report_file, "for (const chart of charts) {\n");
+fprintf(report_file, "chart.addEventListener('wheel', event => { event.preventDefault(); const p = point(event, chart); zoomAt(event.deltaY < 0 ? 1.2 : 1 / 1.2, p.x); }, {passive: false});\n");
+fprintf(report_file, "chart.addEventListener('pointerdown', event => { if (event.button !== 0 || scale <= 1) return; const p = point(event, chart); dragStart = {x: p.x, tx}; chart.setPointerCapture(event.pointerId); });\n");
+fprintf(report_file, "chart.addEventListener('pointermove', event => { if (!dragStart) return; const p = point(event, chart); tx = dragStart.tx + p.x - dragStart.x; clampPan(); applyTransform(); });\n");
+fprintf(report_file, "chart.addEventListener('pointerup', () => { dragStart = null; });\n");
+fprintf(report_file, "chart.addEventListener('pointercancel', () => { dragStart = null; });\n");
+fprintf(report_file, "}\n");
 fprintf(report_file, "})();\n");
 fprintf(report_file, "</script>\n");
 
