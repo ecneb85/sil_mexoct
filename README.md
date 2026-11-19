@@ -29,6 +29,17 @@ The GitHub Actions workflow builds the MEX module and runs a headless
 simulation check on every push and pull request. The check covers output
 shape, finite values, and saturation limits.
 
+Generate a standalone HTML report locally after building the MEX module:
+
+```sh
+octave --no-gui --quiet octave_pr_report.m
+```
+
+The report is written to `artifacts/pr_simulation_report.html` and includes an
+inline SVG graph of the simulated input and controller output. GitHub Actions
+generates the same report and uploads it as the `pr-simulation-html-report`
+artifact, downloadable from the successful workflow run.
+
 The function signature is:
 
 ```text
