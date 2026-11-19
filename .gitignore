@@ -2,3 +2,4 @@
 *.mex*
 *.oct
 .octave_hist
+artifacts/
