@@ -15,6 +15,42 @@ if ~all(isfinite(controller_output(:)))
     error("Simulation produced a non-finite output.");
 end
 
+reference_output = octave_pr_reference( ...
+    scenario.error_signal, scenario.fs, scenario.f0, ...
+    bandwidth_rad_s, kp, kr, ymin, ymax);
+output_difference = controller_output(:) - reference_output(:);
+max_abs_error = max(abs(output_difference));
+rms_error = sqrt(mean(output_difference .^ 2));
+reference_peak = max(abs(reference_output(:)));
+relative_max_error_percent = 100 * max_abs_error / max(reference_peak, eps);
+controller_peak = max(abs(controller_output(:)));
+controller_rms = sqrt(mean(controller_output(:) .^ 2));
+input_rms = sqrt(mean(scenario.error_signal(:) .^ 2));
+saturated_samples = sum(controller_output(:) <= ymin | ...
+    controller_output(:) >= ymax);
+saturation_percent = 100 * saturated_samples / numel(controller_output);
+
+before_step = scenario.t >= 0.25 & scenario.t < 0.45;
+after_step = scenario.t >= 0.65 & scenario.t < 0.85;
+before_step_rms = sqrt(mean(controller_output(before_step) .^ 2));
+after_step_rms = sqrt(mean(controller_output(after_step) .^ 2));
+
+two_fs = 2 * scenario.fs;
+omega = 2 * pi * scenario.f0;
+damping = 2 * bandwidth_rad_s;
+omega_squared = omega ^ 2;
+coefficient_denominator = two_fs ^ 2 + ...
+    damping * two_fs + omega_squared;
+b0 = kr * damping * two_fs / coefficient_denominator;
+a1 = (-2 * two_fs ^ 2 + 2 * omega_squared) / coefficient_denominator;
+a2 = (two_fs ^ 2 - damping * two_fs + omega_squared) / ...
+    coefficient_denominator;
+z1 = exp(-1i * 2 * pi * scenario.f0 / scenario.fs);
+response_at_resonance = kp + ...
+    (b0 - b0 * z1 ^ 2) / (1 + a1 * z1 + a2 * z1 ^ 2);
+resonance_gain = abs(response_at_resonance);
+resonance_phase_degrees = angle(response_at_resonance) * 180 / pi;
+
 report_directory = fullfile(pwd, "artifacts");
 if exist(report_directory, "dir") ~= 7
     [created, message] = mkdir(report_directory);
@@ -47,6 +83,8 @@ fprintf(report_file, "body{font:16px system-ui,sans-serif;margin:2rem auto;max-w
 fprintf(report_file, "h1{font-size:1.8rem} .card{background:white;border:1px solid #dbe2ea;border-radius:12px;padding:1rem 1.25rem;margin:1rem 0}\n");
 fprintf(report_file, "svg{width:100%%;height:auto} table{border-collapse:collapse} th,td{text-align:left;padding:.45rem 1.5rem .45rem 0}\n");
 fprintf(report_file, ".load{stroke:#16a34a;stroke-dasharray:6 4}.input{stroke:#2563eb}.output{stroke:#e11d48}.legend{font-size:14px}\n");
+fprintf(report_file, ".chart-controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:.5rem 0}.chart-controls button{padding:.45rem .8rem;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer}.chart-hint{color:#475569;font-size:.9rem}\n");
+fprintf(report_file, "#response-chart{touch-action:none;cursor:grab}#response-chart:active{cursor:grabbing}\n");
 fprintf(report_file, "</style>\n</head>\n<body>\n");
 fprintf(report_file, "<h1>PR filter simulation report</h1>\n");
 fprintf(report_file, ...
@@ -56,23 +94,37 @@ fprintf(report_file, '<section class="card"><h2>Simulation settings</h2><table>\
 fprintf(report_file, "<tr><th>Nominal AC bus</th><td>%g V RMS</td></tr>\n", ...
     scenario.nominal_voltage_rms_v);
 fprintf(report_file, "<tr><th>Sample rate</th><td>%g Hz</td></tr>\n", scenario.fs);
+fprintf(report_file, "<tr><th>Sample interval</th><td>%.6g ms</td></tr>\n", ...
+    1000 / scenario.fs);
+fprintf(report_file, "<tr><th>Nyquist frequency</th><td>%g Hz</td></tr>\n", ...
+    scenario.fs / 2);
 fprintf(report_file, "<tr><th>Resonant frequency</th><td>%g Hz</td></tr>\n", ...
     scenario.f0);
 fprintf(report_file, ...
     "<tr><th>Load step</th><td>%g to %g p.u. at %.2f s</td></tr>\n", ...
     scenario.load_before_pu, scenario.load_after_pu, ...
     scenario.load_step_time_s);
-fprintf(report_file, "<tr><th>Bandwidth</th><td>%.3f rad/s</td></tr>\n", bandwidth_rad_s);
+fprintf(report_file, "<tr><th>Bandwidth</th><td>%.3f rad/s (%.3f Hz)</td></tr>\n", ...
+    bandwidth_rad_s, bandwidth_rad_s / (2 * pi));
 fprintf(report_file, "<tr><th>Kp / Kr</th><td>%g / %g</td></tr>\n", kp, kr);
 fprintf(report_file, "<tr><th>Output limits</th><td>[%g, %g]</td></tr>\n", ymin, ymax);
 fprintf(report_file, "</table></section>\n");
 
 fprintf(report_file, '<section class="card"><h2>Load step and controller response</h2>\n');
-fprintf(report_file, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-labelledby="chart-title chart-desc">\n');
+fprintf(report_file, '<div class="chart-controls" role="group" aria-label="Graph zoom controls">\n');
+fprintf(report_file, '<button id="zoom-in" type="button" aria-label="Zoom in">+</button>\n');
+fprintf(report_file, '<button id="zoom-out" type="button" aria-label="Zoom out">-</button>\n');
+fprintf(report_file, '<button id="zoom-reset" type="button">Reset zoom</button>\n');
+fprintf(report_file, '<span class="chart-hint">Use the mouse wheel to zoom and drag to pan.</span>\n');
+fprintf(report_file, '</div>\n');
+fprintf(report_file, '<svg id="response-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-labelledby="chart-title chart-desc">\n');
 fprintf(report_file, '<title id="chart-title">400 Hz load step and PR controller response</title>\n');
 fprintf(report_file, ...
     ['<desc id="chart-desc">Load demand steps from 0.3 to 0.7 per unit ' ...
      'at 0.5 seconds, with the input disturbance and controller output.</desc>\n']);
+fprintf(report_file, '<defs><clipPath id="plot-clip"><rect x="%g" y="%g" width="%g" height="%g"/></clipPath></defs>\n', ...
+    plot_left, plot_top, plot_width, plot_height);
+fprintf(report_file, '<g id="plot-content" clip-path="url(#plot-clip)">\n');
 
 for y_tick = plot_ymin:1:plot_ymax
     y_position = plot_top + ...
@@ -134,6 +186,7 @@ for sample_index = sample_indices
     fprintf(report_file, "%.2f,%.2f ", x_position, y_position);
 end
 fprintf(report_file, '"/>\n');
+fprintf(report_file, "</g>\n");
 
 fprintf(report_file, ...
     '<text x="%g" y="%g" text-anchor="middle" font-size="13" fill="#334155">Time (s)</text>\n', ...
@@ -155,12 +208,52 @@ fprintf(report_file, ...
     '<text x="718" y="450" class="legend" fill="#334155">PR output</text>\n');
 fprintf(report_file, "</svg></section>\n");
 
-fprintf(report_file, '<section class="card"><h2>Output summary</h2><table>\n');
-fprintf(report_file, "<tr><th>Peak output</th><td>%.4f</td></tr>\n", ...
-    max(abs(controller_output(:))));
-fprintf(report_file, "<tr><th>RMS output</th><td>%.4f</td></tr>\n", ...
-    sqrt(mean(controller_output(:) .^ 2)));
-fprintf(report_file, "<tr><th>Samples</th><td>%d</td></tr>\n", numel(t));
+fprintf(report_file, "<script>\n");
+fprintf(report_file, "(() => {\n");
+fprintf(report_file, "const svg = document.getElementById('response-chart');\n");
+fprintf(report_file, "const plot = document.getElementById('plot-content');\n");
+fprintf(report_file, "let scale = 1, tx = 0, ty = 0, dragStart = null;\n");
+fprintf(report_file, "const limits = {left: %g, top: %g, width: %g, height: %g};\n", ...
+    plot_left, plot_top, plot_width, plot_height);
+fprintf(report_file, "function point(event) { const p = svg.createSVGPoint(); p.x = event.clientX; p.y = event.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }\n");
+fprintf(report_file, "function applyTransform() { plot.setAttribute('transform', `translate(${tx} ${ty}) scale(${scale})`); }\n");
+fprintf(report_file, "function clampPan() { const minX = limits.left + limits.width - scale * (limits.left + limits.width); const maxX = limits.left - scale * limits.left; const minY = limits.top + limits.height - scale * (limits.top + limits.height); const maxY = limits.top - scale * limits.top; tx = Math.min(maxX, Math.max(minX, tx)); ty = Math.min(maxY, Math.max(minY, ty)); }\n");
+fprintf(report_file, "function zoomAt(factor, x, y) { const next = Math.max(1, Math.min(16, scale * factor)); const ratio = next / scale; tx = x - (x - tx) * ratio; ty = y - (y - ty) * ratio; scale = next; clampPan(); applyTransform(); }\n");
+fprintf(report_file, "document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25, 500, 235));\n");
+fprintf(report_file, "document.getElementById('zoom-out').addEventListener('click', () => zoomAt(0.8, 500, 235));\n");
+fprintf(report_file, "document.getElementById('zoom-reset').addEventListener('click', () => { scale = 1; tx = 0; ty = 0; applyTransform(); });\n");
+fprintf(report_file, "svg.addEventListener('wheel', event => { event.preventDefault(); const p = point(event); zoomAt(event.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y); }, {passive: false});\n");
+fprintf(report_file, "svg.addEventListener('pointerdown', event => { if (event.button !== 0 || scale <= 1) return; const p = point(event); dragStart = {x: p.x, y: p.y, tx, ty}; svg.setPointerCapture(event.pointerId); });\n");
+fprintf(report_file, "svg.addEventListener('pointermove', event => { if (!dragStart) return; const p = point(event); tx = dragStart.tx + p.x - dragStart.x; ty = dragStart.ty + p.y - dragStart.y; clampPan(); applyTransform(); });\n");
+fprintf(report_file, "svg.addEventListener('pointerup', () => { dragStart = null; });\n");
+fprintf(report_file, "svg.addEventListener('pointercancel', () => { dragStart = null; });\n");
+fprintf(report_file, "})();\n");
+fprintf(report_file, "</script>\n");
+
+fprintf(report_file, '<section class="card"><h2>Filter quality and output metrics</h2><table>\n');
+fprintf(report_file, "<tr><th>Peak absolute output</th><td>%.6g p.u.</td></tr>\n", ...
+    controller_peak);
+fprintf(report_file, "<tr><th>RMS output</th><td>%.6g p.u.</td></tr>\n", ...
+    controller_rms);
+fprintf(report_file, "<tr><th>Input RMS</th><td>%.6g p.u.</td></tr>\n", input_rms);
+fprintf(report_file, "<tr><th>Max absolute error vs double reference</th><td>%.6g p.u.</td></tr>\n", ...
+    max_abs_error);
+fprintf(report_file, "<tr><th>RMS error vs double reference</th><td>%.6g p.u.</td></tr>\n", ...
+    rms_error);
+fprintf(report_file, "<tr><th>Max error relative to reference peak</th><td>%.6g %%</td></tr>\n", ...
+    relative_max_error_percent);
+fprintf(report_file, "<tr><th>Controller gain at resonance</th><td>%.6g</td></tr>\n", ...
+    resonance_gain);
+fprintf(report_file, "<tr><th>Controller phase at resonance</th><td>%.6g degrees</td></tr>\n", ...
+    resonance_phase_degrees);
+fprintf(report_file, "<tr><th>Samples at output limit</th><td>%d (%.4g %%)</td></tr>\n", ...
+    saturated_samples, saturation_percent);
+fprintf(report_file, "<tr><th>Output RMS before load step</th><td>%.6g p.u.</td></tr>\n", ...
+    before_step_rms);
+fprintf(report_file, "<tr><th>Output RMS after load step</th><td>%.6g p.u.</td></tr>\n", ...
+    after_step_rms);
+fprintf(report_file, "<tr><th>Samples / duration</th><td>%d / %.3g s</td></tr>\n", ...
+    numel(t), t(end) + 1 / scenario.fs);
 fprintf(report_file, "</table></section>\n");
 fprintf(report_file, "</body>\n</html>\n");
 
