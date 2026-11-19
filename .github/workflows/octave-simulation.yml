@@ -49,7 +49,7 @@ jobs:
             octave --no-gui --quiet octave_pr_report.m
 
       - name: Upload HTML report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pr-simulation-html-report
           path: artifacts/pr_simulation_report.html
