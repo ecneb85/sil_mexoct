@@ -71,7 +71,7 @@ plot_width = 860;
 plot_height = 330;
 plot_ymin = -2;
 plot_ymax = 2;
-sample_indices = round(linspace(1, numel(t), 1200));
+sample_indices = 1:numel(t);
 
 fprintf(report_file, "<!doctype html>\n");
 fprintf(report_file, '<html lang="en">\n<head>\n');
@@ -114,8 +114,9 @@ fprintf(report_file, '<section class="card"><h2>Load step and controller respons
 fprintf(report_file, '<div class="chart-controls" role="group" aria-label="Graph zoom controls">\n');
 fprintf(report_file, '<button id="zoom-in" type="button" aria-label="Zoom in">+</button>\n');
 fprintf(report_file, '<button id="zoom-out" type="button" aria-label="Zoom out">-</button>\n');
+fprintf(report_file, '<button id="zoom-load-step" type="button">Load step</button>\n');
 fprintf(report_file, '<button id="zoom-reset" type="button">Reset zoom</button>\n');
-fprintf(report_file, '<span class="chart-hint">Use the mouse wheel to zoom and drag to pan.</span>\n');
+fprintf(report_file, '<span class="chart-hint">Mouse wheel: zoom time axis; drag: pan.</span>\n');
 fprintf(report_file, '</div>\n');
 fprintf(report_file, '<svg id="response-chart" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-labelledby="chart-title chart-desc">\n');
 fprintf(report_file, '<title id="chart-title">400 Hz load step and PR controller response</title>\n');
@@ -123,7 +124,7 @@ fprintf(report_file, ...
     ['<desc id="chart-desc">Load demand steps from 0.3 to 0.7 per unit ' ...
      'at 0.5 seconds, with the input disturbance and controller output.</desc>\n']);
 fprintf(report_file, '<defs><clipPath id="plot-clip"><rect x="%g" y="%g" width="%g" height="%g"/></clipPath></defs>\n', ...
-    plot_left - 30, plot_top - 20, plot_width + 30, plot_height + 50);
+    plot_left - 30, plot_top - 20, plot_width + 60, plot_height + 50);
 fprintf(report_file, '<g id="plot-content" clip-path="url(#plot-clip)">\n');
 
 for y_tick = plot_ymin:1:plot_ymax
@@ -132,9 +133,6 @@ for y_tick = plot_ymin:1:plot_ymax
     fprintf(report_file, ...
         '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#e2e8f0"/>\n', ...
         plot_left, y_position, plot_left + plot_width, y_position);
-    fprintf(report_file, ...
-        '<text x="%g" y="%g" text-anchor="end" font-size="12" fill="#475569">%g</text>\n', ...
-        plot_left - 10, y_position + 4, y_tick);
 end
 
 for x_tick = 0:0.2:1
@@ -146,13 +144,6 @@ for x_tick = 0:0.2:1
         '<text x="%g" y="%g" text-anchor="middle" font-size="12" fill="#475569">%.1f</text>\n', ...
         x_position, plot_top + plot_height + 20, x_tick);
 end
-
-fprintf(report_file, ...
-    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
-    plot_left, plot_top, plot_left, plot_top + plot_height);
-fprintf(report_file, ...
-    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
-    plot_left, plot_top + plot_height, plot_left + plot_width, plot_top + plot_height);
 
 fprintf(report_file, ...
     '<polyline class="input" fill="none" stroke-width="1.5" points="');
@@ -187,6 +178,19 @@ for sample_index = sample_indices
 end
 fprintf(report_file, '"/>\n');
 fprintf(report_file, "</g>\n");
+fprintf(report_file, ...
+    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
+    plot_left, plot_top, plot_left, plot_top + plot_height);
+fprintf(report_file, ...
+    '<line x1="%g" y1="%g" x2="%g" y2="%g" stroke="#64748b"/>\n', ...
+    plot_left, plot_top + plot_height, plot_left + plot_width, plot_top + plot_height);
+for y_tick = plot_ymin:1:plot_ymax
+    y_position = plot_top + ...
+        (plot_ymax - y_tick) / (plot_ymax - plot_ymin) * plot_height;
+    fprintf(report_file, ...
+        '<text x="%g" y="%g" text-anchor="end" font-size="12" fill="#475569">%g</text>\n', ...
+        plot_left - 10, y_position + 4, y_tick);
+end
 
 fprintf(report_file, ...
     '<text x="%g" y="%g" text-anchor="middle" font-size="13" fill="#334155">Time (s)</text>\n', ...
@@ -212,19 +216,21 @@ fprintf(report_file, "<script>\n");
 fprintf(report_file, "(() => {\n");
 fprintf(report_file, "const svg = document.getElementById('response-chart');\n");
 fprintf(report_file, "const plot = document.getElementById('plot-content');\n");
-fprintf(report_file, "let scale = 1, tx = 0, ty = 0, dragStart = null;\n");
-fprintf(report_file, "const limits = {left: %g, top: %g, width: %g, height: %g};\n", ...
-    plot_left, plot_top, plot_width, plot_height);
+fprintf(report_file, "let scale = 1, tx = 0, dragStart = null;\n");
+fprintf(report_file, "const limits = {left: %g, width: %g};\n", ...
+    plot_left, plot_width);
 fprintf(report_file, "function point(event) { const p = svg.createSVGPoint(); p.x = event.clientX; p.y = event.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }\n");
-fprintf(report_file, "function applyTransform() { plot.setAttribute('transform', `translate(${tx} ${ty}) scale(${scale})`); }\n");
-fprintf(report_file, "function clampPan() { const minX = limits.left + limits.width - scale * (limits.left + limits.width); const maxX = limits.left - scale * limits.left; const minY = limits.top + limits.height - scale * (limits.top + limits.height); const maxY = limits.top - scale * limits.top; tx = Math.min(maxX, Math.max(minX, tx)); ty = Math.min(maxY, Math.max(minY, ty)); }\n");
-fprintf(report_file, "function zoomAt(factor, x, y) { const next = Math.max(1, Math.min(16, scale * factor)); const ratio = next / scale; tx = x - (x - tx) * ratio; ty = y - (y - ty) * ratio; scale = next; clampPan(); applyTransform(); }\n");
-fprintf(report_file, "document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25, 500, 235));\n");
-fprintf(report_file, "document.getElementById('zoom-out').addEventListener('click', () => zoomAt(0.8, 500, 235));\n");
-fprintf(report_file, "document.getElementById('zoom-reset').addEventListener('click', () => { scale = 1; tx = 0; ty = 0; applyTransform(); });\n");
-fprintf(report_file, "svg.addEventListener('wheel', event => { event.preventDefault(); const p = point(event); zoomAt(event.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y); }, {passive: false});\n");
-fprintf(report_file, "svg.addEventListener('pointerdown', event => { if (event.button !== 0 || scale <= 1) return; const p = point(event); dragStart = {x: p.x, y: p.y, tx, ty}; svg.setPointerCapture(event.pointerId); });\n");
-fprintf(report_file, "svg.addEventListener('pointermove', event => { if (!dragStart) return; const p = point(event); tx = dragStart.tx + p.x - dragStart.x; ty = dragStart.ty + p.y - dragStart.y; clampPan(); applyTransform(); });\n");
+fprintf(report_file, "function applyTransform() { plot.setAttribute('transform', 'translate(' + tx + ' 0) scale(' + scale + ' 1)'); }\n");
+fprintf(report_file, "function clampPan() { const minX = limits.left + limits.width - scale * (limits.left + limits.width); const maxX = limits.left - scale * limits.left; tx = Math.min(maxX, Math.max(minX, tx)); }\n");
+fprintf(report_file, "function zoomAt(factor, x) { const next = Math.max(1, Math.min(256, scale * factor)); const ratio = next / scale; tx = x - (x - tx) * ratio; scale = next; clampPan(); applyTransform(); }\n");
+fprintf(report_file, "document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.5, 520));\n");
+fprintf(report_file, "document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.5, 520));\n");
+fprintf(report_file, "document.getElementById('zoom-load-step').addEventListener('click', () => { scale = 5; tx = 500 - scale * (%g + 0.55 * %g); clampPan(); applyTransform(); });\n", ...
+    plot_left, plot_width);
+fprintf(report_file, "document.getElementById('zoom-reset').addEventListener('click', () => { scale = 1; tx = 0; applyTransform(); });\n");
+fprintf(report_file, "svg.addEventListener('wheel', event => { event.preventDefault(); const p = point(event); zoomAt(event.deltaY < 0 ? 1.2 : 1 / 1.2, p.x); }, {passive: false});\n");
+fprintf(report_file, "svg.addEventListener('pointerdown', event => { if (event.button !== 0 || scale <= 1) return; const p = point(event); dragStart = {x: p.x, tx}; svg.setPointerCapture(event.pointerId); });\n");
+fprintf(report_file, "svg.addEventListener('pointermove', event => { if (!dragStart) return; const p = point(event); tx = dragStart.tx + p.x - dragStart.x; clampPan(); applyTransform(); });\n");
 fprintf(report_file, "svg.addEventListener('pointerup', () => { dragStart = null; });\n");
 fprintf(report_file, "svg.addEventListener('pointercancel', () => { dragStart = null; });\n");
 fprintf(report_file, "})();\n");
