@@ -15,7 +15,7 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends octave octave-dev
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends octave octave-dev
       - name: Build MEX module
         run: mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
       - name: Run simulation checks
