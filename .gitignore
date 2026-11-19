@@ -1,0 +1,4 @@
+*.mex
+*.mex*
+*.oct
+.octave_hist
