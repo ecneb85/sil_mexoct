@@ -10,13 +10,27 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
       - name: Install Octave and development tools
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends octave octave-dev
+
       - name: Build MEX module
         run: mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
+
       - name: Run simulation checks
         run: octave --no-gui --quiet tests/octave_pr_test.m
+
+      - name: Generate HTML simulation report
+        run: octave --no-gui --quiet octave_pr_report.m
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-simulation-html-report
+          path: artifacts/pr_simulation_report.html
+          if-no-files-found: error
+          retention-days: 30
