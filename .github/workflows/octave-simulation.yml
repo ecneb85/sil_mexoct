@@ -13,7 +13,7 @@ jobs:
       - name: Install Octave and development tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends octave liboctave-dev
+          sudo apt-get install --yes --no-install-recommends octave octave-dev
       - name: Build MEX module
         run: mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
       - name: Run simulation checks
