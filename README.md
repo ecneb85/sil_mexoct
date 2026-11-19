@@ -25,9 +25,12 @@ mkoctfile --mex pr_controller.c pr_controller_mex.c -o pr_controller_mex
 octave --quiet octave_pr_demo.m
 ```
 
-The GitHub Actions workflow builds the MEX module and runs a headless
-simulation check on every push and pull request. The check covers output
-shape, finite values, and saturation limits.
+The GitHub Actions workflow builds a Docker image from `Dockerfile` and uses
+it to compile the MEX module and run a headless simulation check on every push
+and pull request. BuildKit caches the image layers between runs, avoiding
+reinstallation of Octave unless the image definition changes or the cache is
+unavailable. The check covers output shape, finite values, and saturation
+limits.
 
 Generate a standalone HTML report locally after building the MEX module:
 
