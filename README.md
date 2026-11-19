@@ -40,10 +40,12 @@ octave --no-gui --quiet octave_pr_report.m
 ```
 
 The report is written to `artifacts/pr_simulation_report.html` and includes an
-inline SVG graph of the simulated load demand, input disturbance, and
-controller output. Zoom the time axis with the mouse wheel or zoom buttons,
-drag to pan, use **Load step** for a close-up of the transient, and use
-**Reset zoom** to restore the full view. All simulation samples are plotted.
+inline SVG graphs show the load-step response as a one-cycle RMS envelope,
+followed by the instantaneous waveforms. The envelope makes the transient
+clear without the dense 400 Hz traces. Both graphs share time-axis zoom and
+pan: use the mouse wheel or zoom buttons, drag to pan, use **Load step** for
+a close-up of the transient, and use **Reset zoom** to restore the full view.
+All simulation samples are plotted.
 The report includes peak and RMS output, saturation rate, gain and phase at
 resonance, and maximum and RMS difference from the double-precision reference.
 The reference uses the same discrete PR equation and output limits, but
