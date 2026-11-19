@@ -30,7 +30,8 @@ it to compile the MEX module and run a headless simulation check on every push
 and pull request. BuildKit caches the image layers between runs, avoiding
 reinstallation of Octave unless the image definition changes or the cache is
 unavailable. The check covers output shape, finite values, and saturation
-limits.
+limits, and verifies that the controller response increases after the load
+step.
 
 Generate a standalone HTML report locally after building the MEX module:
 
@@ -39,9 +40,13 @@ octave --no-gui --quiet octave_pr_report.m
 ```
 
 The report is written to `artifacts/pr_simulation_report.html` and includes an
-inline SVG graph of the simulated input and controller output. GitHub Actions
-generates the same report and uploads it as the `pr-simulation-html-report`
-artifact, downloadable from the successful workflow run.
+inline SVG graph of the simulated load demand, input disturbance, and
+controller output. The shared Octave scenario models an illustrative 115 V RMS,
+400 Hz aircraft AC bus with a load step from 0.3 to 0.7 p.u. at 0.5 seconds.
+It is a teaching example, not a validated aircraft power-system model. GitHub
+Actions generates the same report and uploads it as the
+`pr-simulation-html-report` artifact, downloadable from the successful workflow
+run.
 
 The function signature is:
 
